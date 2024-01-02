@@ -67,5 +67,5 @@ class Deck(models.Model):
 
 
 class CardForPlayer(models.Model):
-    player_id = models.ForeignKey(Player, on_delete=models.CASCADE, to_field='id')
+    playerID = models.ForeignKey(Player, on_delete=models.CASCADE, to_field='id')
     cards = models.TextField(default=None, null=True, blank=True)
