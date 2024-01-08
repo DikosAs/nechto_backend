@@ -1,3 +1,4 @@
+from django.contrib import admin
 from django.db import models
 from django.contrib.auth.models import User
 from django.db.models import BigAutoField
@@ -26,16 +27,18 @@ class Player(models.Model):
     def __str__(self) -> str:
         return str(self.username)
 
-    class Meta:
-        verbose_name = "игрока"
-        verbose_name_plural = "Игроки"
-
 
 class Card(models.Model):
+    CARD_TYPES = [
+        ("ACT", "Активная"),
+        ("DEF", "Защитная"),
+        ("PAN", "Паника"),
+    ]
     id = models.BigAutoField(primary_key=True)
-    name = models.CharField('Название', max_length=10)
-    descriptin = models.TextField('Описание', null=True, blank=True)
-    function = models.ForeignKey('CardFunction', models.CASCADE, verbose_name='Функция')
+    name = models.CharField('Название', max_length=32)
+    type = models.CharField('Тип', max_length=3, choices=CARD_TYPES, default="ACT")
+    description = models.TextField('Описание', null=True, blank=True)
+    function = models.CharField('Функция', max_length=100)
     image = models.ImageField('Изображение', null=True, blank=True)
     minPlayerInGame = models.IntegerField('Минимальное число игроков', default=0, null=True, blank=True)
     maxCardInColoda = models.IntegerField('Максимальное число карт в колоде', default=0, null=True, blank=True)
@@ -47,17 +50,11 @@ class Card(models.Model):
         verbose_name = "карту"
         verbose_name_plural = "Карты"
 
-
-class CardFunction(models.Model):
-    id = models.BigAutoField(primary_key=True)
-    function = models.CharField('Функция', max_length=100)
-
-    def __str__(self) -> str:
-        return self.function
-
-    class Meta:
-        verbose_name = "функцию карты"
-        verbose_name_plural = "Функции карт"
+    @admin.display(description="Картинка")
+    def show_image(self):
+        from django.utils import html
+        if self.image:
+            return html.format_html("<img src='{}' style ='width:100px;'>", self.image.url)
 
 
 class Deck(models.Model):

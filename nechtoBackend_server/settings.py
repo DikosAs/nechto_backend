@@ -31,6 +31,8 @@ ALLOWED_HOSTS = []
 # Application definition
 
 INSTALLED_APPS = [
+    'channels',
+    'daphne',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -68,7 +70,15 @@ TEMPLATES = [
     },
 ]
 
-WSGI_APPLICATION = 'nechtoBackend_server.wsgi.application'
+# WSGI_APPLICATION = 'nechtoBackend_server.wsgi.application'
+ASGI_APPLICATION = 'nechtoBackend_server.asgi.application'
+
+
+CHANNEL_LAYERS = {
+    'default': {
+        'BACKEND': 'channels.layers.InMemoryChannelLayer',
+    }
+}
 
 
 # Database

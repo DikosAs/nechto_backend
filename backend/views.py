@@ -5,77 +5,106 @@ from django.contrib.auth.forms import UserCreationForm
 from django.core.handlers.wsgi import WSGIRequest
 from django.urls import reverse_lazy, reverse
 from django.http import JsonResponse
-from backend.models import *
-from random import shuffle, choice
+from backend.models import Player, Card, Deck, Game, CardForPlayer
+from random import shuffle
 
 
-def str_to_list_int(string: str) -> list:
+def str_to_list(string: str) -> list[int]:
     out = []
+
     for char in string:
-        try: out.append(int(char))
-        except: pass
+        try:
+            out.append(int(char))
+        except:
+            pass
+
     return out
 
 
-def generate_deck(game_id: Game) -> list:
-    all_card = []
-    if len(Deck.objects.filter(gameID=game_id)) == 0:
+def generate_deck(game_id: int) -> list:
+    if not Deck.objects.filter(gameID_id=game_id).exists():
+        all_card = []
         for card in Card.objects.all():
-            if card.minPlayerInGame <= game_id.maxPlayers or card.minPlayerInGame == 0:
+            if (card.minPlayerInGame <= Game.objects.get(id=game_id).maxPlayers
+                    or card.minPlayerInGame == 0):
                 for i in range(card.maxCardInColoda):
                     all_card.append(card.id)
         shuffle(all_card)
         Deck.objects.create(
-            gameID=game_id,
+            gameID_id=game_id,
             cards=all_card
         )
     else:
-        all_card = str_to_list(Deck.objects.get(gameID=game_id).cards)
+        all_card = str_to_list(Deck.objects.get(gameID_id=game_id).cards)
 
     return all_card
 
 
 # Create your views here.
+def update_data_on_client(request: WSGIRequest):
+    if request.method == 'GET':
+        try:
+            cards = {}
+            for card in Card.objects.all():
+                try:
+                    image = str(card.image.url)
+                except ValueError:
+                    image = str(card.image)
+                cards[card.id] = {
+                    'name': card.name,
+                    'description': card.description,
+                    'function': card.function,
+                    'image': image,
+                    'minPlayerInGame': card.minPlayerInGame,
+                    'maxCardInColoda': card.maxCardInColoda
+                }
+            data = {'cards': cards}
+            status = 200
+        except:
+            data = {}
+            status = 500
+
+        return JsonResponse(data, safe=False, status=status)
+
+
 def games_list(request: WSGIRequest):
     if request.method == 'GET':
         return_data = {}
+
         for game in Game.objects.all():
             return_data[game.id] = {
                 'maxPlayers': game.maxPlayers,
-                'minPlayerInGame': len(Player.objects.filter(gameID=game.id))
+                'playerInGame': Player.objects.filter(gameID=game).count()
             }
+
         return JsonResponse(return_data, safe=False)
 
 
 def add_player(request: WSGIRequest, game_id: int = 0, username: str = ''):
     if request.method == 'GET':
-        GAME_ID = Game.objects.get(id=game_id)
-        PLAYERS_IN_GAME = Player.objects.filter(gameID=GAME_ID)
-        PLAYERS_IN_GAME_COUNT = PLAYERS_IN_GAME.count()
+        players_in_game = Player.objects.filter(gameID_id=game_id)
+        players_in_game_count = players_in_game.count()
 
         return_data = {}
-        try:
-            if len(Player.objects.filter(username=username)) != 0:
-                return_data['status'] = 501
-            else:
-                Player.objects.create(
-                    gameID=GAME_ID,
-                    username=username,
-                    position=PLAYERS_IN_GAME_COUNT + 1
-                )
-                return_data['status'] = 200
-        except:
-            return_data['status'] = 500
+        # try:
+        if Player.objects.filter(username=username).exists():
+            status = 501
+        else:
+            Player.objects.create(
+                gameID_id=game_id,
+                username=username,
+                position=players_in_game_count + 1
+            )
+            status = 200
 
-        # если игроков достаточно, то генерирую колоду
-        if PLAYERS_IN_GAME_COUNT >= GAME_ID.maxPlayers:
-            all_card = generate_deck(GAME_ID)
+            # try:
+        if players_in_game_count >= Game.objects.get(id=game_id).maxPlayers:
+            all_card = generate_deck(game_id)
 
-            # после генерации колоды раздаю карты (4 штуки)
             settings_data = {
                 'cardsPerPlayer': 4,
-                'playerCount': PLAYERS_IN_GAME_COUNT,
-                'players': PLAYERS_IN_GAME
+                'playerCount': players_in_game_count,
+                'players': players_in_game
             }
             cards_for_player = {}
 
@@ -92,13 +121,18 @@ def add_player(request: WSGIRequest, game_id: int = 0, username: str = ''):
                 except IndexError:
                     pass
             else:
+                print(cards_for_player)
                 for player_cards in cards_for_player:
                     CardForPlayer.objects.create(
-                        playerID=Player.objects.get(id=player_cards),
+                        playerID=Player.objects.get(username=username),
                         cards=cards_for_player[player_cards]
                     )
+                # except:
+                #     pass
+        # except:
+        #     status = 500
 
-        return JsonResponse(return_data, safe=False)
+        return JsonResponse(return_data, safe=False, status=status)
 
 
 def del_player(request: WSGIRequest, game_id: int = 0, username: str = ''):
@@ -106,42 +140,47 @@ def del_player(request: WSGIRequest, game_id: int = 0, username: str = ''):
         return_data = {}
         try:
             Player.objects.filter(
-                gameID=Game.objects.get(id=game_id),
+                gameID_id=game_id,
                 username=username
             ).delete()
-            return_data['status'] = 200
+            status = 200
         except:
-            return_data['status'] = 501
+            status = 501
 
-        return JsonResponse(return_data, safe=False)
+        if not Player.objects.filter(gameID_id=game_id).exists():
+            Deck.objects.filter(gameID_id=game_id).delete()
+
+        return JsonResponse(return_data, safe=False, status=status)
 
 
 def load_data(request: WSGIRequest, game_id: int = 0, username: str = ''):
     if request.method == 'GET':
-        PLAYERS_IN_GAME = Player.objects.filter(gameID=Game.objects.get(id=game_id))
+        players_in_game = Player.objects.filter(gameID_id=game_id)
 
         return_data = {}
         players = {}
-        try:
-            return_data['cards'] = CardForPlayer.objects.get(player_id=Player.objects.get(username=username).id)
-            for player in PLAYERS_IN_GAME:
-                players[player.position] = {
-                    'id': player.id,
-                    'gameID': player.gameID.id,
-                    'username': player.username,
-                }
-            else:
-                return_data['players'] = players
-            return_data['status'] = 200
-        except:
-            for player in PLAYERS_IN_GAME:
-                players[player.position] = {
-                    'id': player.id,
-                    'gameID': player.gameID.id,
-                    'username': player.username,
-                }
-            else:
-                return_data['players'] = players
-            return_data['status'] = 503
 
-        return JsonResponse(return_data, safe=False)
+        # return_data['cards'] = CardForPlayer.objects.get(
+        #     playerID=Player.objects.get(username=username)
+        # ).cards
+
+        try:
+            for player in players_in_game:
+                players[player.position] = {
+                    'id': player.id,
+                    'gameID': player.gameID.id,
+                    'username': player.username,
+                }
+            return_data['players'] = players
+        except:
+            pass
+
+        try:
+            return_data['cards'] = CardForPlayer.objects.get(
+                playerID=Player.objects.get(username=username)
+            ).cards
+            status = 200
+        except:
+            status = 503
+
+        return JsonResponse(return_data, safe=False, status=status)
