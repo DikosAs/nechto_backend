@@ -1,7 +1,6 @@
 from django.contrib import admin
 from django.db import models
 from django.contrib.auth.models import User
-from django.db.models import BigAutoField
 
 
 # Create your models here.
@@ -20,7 +19,7 @@ class Game(models.Model):
 
 class Player(models.Model):
     id = models.BigAutoField(primary_key=True)
-    gameID = models.ForeignKey(Game, models.CASCADE)
+    game = models.ForeignKey(Game, models.CASCADE)
     username = models.CharField(max_length=50)
     position = models.SmallIntegerField()
 
@@ -59,10 +58,14 @@ class Card(models.Model):
 
 class Deck(models.Model):
     id = models.BigAutoField(primary_key=True)
-    gameID = models.ForeignKey(Game, models.CASCADE, to_field='id')
-    cards = models.TextField(default=None, null=True, blank=True)
+    game = models.ForeignKey(Game, models.CASCADE, to_field='id')
 
 
-class CardForPlayer(models.Model):
-    playerID = models.ForeignKey(Player, on_delete=models.CASCADE, to_field='id')
-    cards = models.TextField(default=None, null=True, blank=True)
+class CardOfDeck(models.Model):
+    deck = models.ForeignKey(Deck, models.CASCADE, to_field='id')
+    card = models.ForeignKey(Card, models.CASCADE, to_field='id')
+
+
+class CardOfPlayer(models.Model):
+    player = models.ForeignKey(Player, on_delete=models.CASCADE, to_field='id')
+    card = models.ForeignKey(Card, on_delete=models.CASCADE, to_field='id')

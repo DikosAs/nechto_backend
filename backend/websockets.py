@@ -1,24 +1,14 @@
 import django.db.models
 from channels.generic.websocket import AsyncWebsocketConsumer
 from channels.db import database_sync_to_async
-from backend.models import CardForPlayer, Player
+from backend.models import CardOfPlayer, Player
 from backend.views import *
 import json
 
 
-def str_to_list(string: str) -> list[int]:
-    out: list[int] = []
-    for char in string:
-        try:
-            out.append(int(char))
-        except ValueError:
-            pass
-    return out
-
-
 @database_sync_to_async
-def get_cards(username: str) -> list[int]:
-    return str_to_list(CardForPlayer.objects.get(playerID__username=username).cards)
+def get_cards_of_player(username: str) -> list[Card]:
+    return [card.card for card in CardOfPlayer.objects.filter(player__username=username)]
 
 
 @database_sync_to_async
@@ -71,7 +61,7 @@ class GameWSClient(AsyncWebsocketConsumer):
             base_data: bool = False
     ):
         if base_data:
-            cards = await get_cards(self.username)
+            cards = await get_cards_of_player(self.username)
             players = await get_players(self.game_id)
             data = {
                 'func': 'data',
@@ -82,7 +72,6 @@ class GameWSClient(AsyncWebsocketConsumer):
             self.game_id,
             data
         )
-        await self.send(text_data=json.dumps(data))
 
     async def chat_message(self, event):
         await self.send(

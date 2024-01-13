@@ -1,5 +1,5 @@
 from django.urls import path
-from .views import games_list, add_player, del_player, update_data_on_client
+from backend.views import games_list, add_player, del_player, update_data_on_client
 
 app_name = 'backend'
 

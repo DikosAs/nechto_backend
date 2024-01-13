@@ -6,38 +6,39 @@ from django.contrib.auth.forms import UserCreationForm
 from django.core.handlers.wsgi import WSGIRequest
 from django.urls import reverse_lazy, reverse
 from django.http import JsonResponse
-from backend.models import Player, Card, Deck, Game, CardForPlayer
+from backend.models import Player, Card, Deck, Game, CardOfPlayer, CardOfDeck
 from random import shuffle
 from time import sleep
 
 
-def str_to_list(string: str) -> list[int]:
-    out: list[int] = []
+def generate_deck(game_id: int) -> list[Card]:
+    if not Deck.objects.filter(game_id=game_id).exists():
+        all_card: list[Card] = []
+        card_from_db = Card.objects.filter(minPlayerInGame__lte=Game.objects.get(id=game_id).maxPlayers)
 
-    for char in string:
-        try:
-            out.append(int(char))
-        except:
-            pass
-
-    return out
-
-
-def generate_deck(game_id: int) -> list[int]:
-    if not Deck.objects.filter(gameID_id=game_id).exists():
-        all_card: list[int] = []
-        for card in Card.objects.all():
-            if (card.minPlayerInGame <= Game.objects.get(id=game_id).maxPlayers
-                    or card.minPlayerInGame == 0):
+        for card in card_from_db:
+            if card.minPlayerInGame <= Game.objects.get(id=game_id).maxPlayers:
                 for i in range(card.maxCardInColoda):
-                    all_card.append(card.id)
-        shuffle(all_card)
-        Deck.objects.create(
-            gameID_id=game_id,
-            cards=all_card
-        )
+                    all_card.append(card)
+        else:
+            shuffle(all_card)
+
+            # добавляю колоду в базу данных
+            Deck.objects.create(
+                game_id=game_id
+            )
+
+            deck = Deck.objects.get(game_id=game_id)
+            for cardID in all_card:
+                CardOfDeck.objects.create(
+                    deck=deck,
+                    card=cardID
+                )
+            else:
+                print('Колода сгенерирована и записана в базу данных')
+
     else:
-        all_card: list[int] = str_to_list(Deck.objects.get(gameID_id=game_id).cards)
+        all_card = list(CardOfDeck.objects.filter(deck__game_id=game_id))
 
     return all_card
 
@@ -80,7 +81,7 @@ def games_list(request: WSGIRequest) -> JsonResponse:
         for game in Game.objects.all():
             return_data[game.id]: dict[str, int] = {
                 'maxPlayers': game.maxPlayers,
-                'playerInGame': Player.objects.filter(gameID=game).count()
+                'playerInGame': Player.objects.filter(game=game).count()
             }
 
         return JsonResponse(return_data, safe=False)
@@ -88,7 +89,7 @@ def games_list(request: WSGIRequest) -> JsonResponse:
 
 def add_player(request: WSGIRequest, game_id: int = 0, username: str = ''):
     if request.method == 'GET':
-        players_in_game = Player.objects.filter(gameID_id=game_id)
+        players_in_game = Player.objects.filter(game_id=game_id)
         players_in_game_count: int = players_in_game.count()
 
         try:
@@ -104,51 +105,33 @@ def add_player(request: WSGIRequest, game_id: int = 0, username: str = ''):
                 else:
                     if empty_place:
                         Player.objects.create(
-                            gameID_id=game_id,
+                            game_id=game_id,
                             username=username,
                             position=empty_place[0]
                         )
                     else:
                         Player.objects.create(
-                            gameID_id=game_id,
+                            game_id=game_id,
                             username=username,
                             position=players_in_game_count + 1
                         )
                     status: int = 200
 
                 try:
-                    sleep(2)
-                    players_in_game: django.db.models.QuerySet[Player] = Player.objects.filter(gameID_id=game_id)
+                    # sleep(2)
+                    players_in_game: django.db.models.QuerySet[Player] = Player.objects.filter(game_id=game_id)
                     players_in_game_count: int = players_in_game.count()
                     if players_in_game_count >= Game.objects.get(id=game_id).maxPlayers:
-                        all_card: list[int] = generate_deck(game_id)
+                        all_card: list[Card] = generate_deck(game_id)
 
-                        settings_data: dict[str, int or django.db.models.QuerySet[Player]] = {
-                            'cardsPerPlayer': 4,
-                            'playerCount': players_in_game_count,
-                            'players': players_in_game
-                        }
-                        cards_for_player: dict[int, list[int]] = {}
+                        cards_per_player = 4
 
-                        cardsIDs: list[int] = [i for i in range(len(all_card))]
-                        card_pont: list[int] = cardsIDs[::settings_data['playerCount']]
-                        for playerID in range(settings_data['playerCount']):
-                            try:
-                                cards_for_player[settings_data['players'][playerID].id]: list[int] = [
-                                    all_card[card_pont[0]+playerID-1],
-                                    all_card[card_pont[1]+playerID-1],
-                                    all_card[card_pont[2]+playerID-1],
-                                    all_card[card_pont[3]+playerID-1]
-                                ]
-                            except IndexError:
-                                pass
-                        else:
-                            for player_cards in cards_for_player:
-                                if not CardForPlayer.objects.filter(playerID_id=player_cards).exists():
-                                    CardForPlayer.objects.create(
-                                        playerID_id=player_cards,
-                                        cards=cards_for_player[player_cards]
-                                    )
+                        for player in players_in_game:
+                            for i in range(cards_per_player):
+                                CardOfPlayer.objects.create(
+                                    player=player,
+                                    card=all_card.pop()
+                                )
                 except IndexError:
                     pass
         except:
@@ -161,18 +144,21 @@ def del_player(request: WSGIRequest, game_id: int = 0, username: str = '') -> Js
     if request.method == 'GET':
         try:
             Player.objects.filter(
-                gameID_id=game_id,
+                game_id=game_id,
                 username=username
             ).delete()
             status = 200
         except:
             status = 501
 
-        if not Player.objects.filter(gameID_id=game_id).exists():
-            Deck.objects.filter(gameID_id=game_id).delete()
+        players = Player.objects.filter(game_id=game_id)
+        if not players.exists():
+            Deck.objects.filter(game_id=game_id).delete()
 
-        cardsForPlayer = CardForPlayer.objects.filter(playerID__username=username)
-        if cardsForPlayer.exists():
-            cardsForPlayer.delete()
+            for player in players:
+                CardFromPlayer.objects.filter(
+                    player=player
+                )
+
 
         return JsonResponse({}, safe=False, status=status)
