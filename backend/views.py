@@ -38,7 +38,7 @@ def generate_deck(game_id: int) -> list[Card]:
                 print('Колода сгенерирована и записана в базу данных')
 
     else:
-        all_card = list(CardOfDeck.objects.filter(deck__game_id=game_id))
+        all_card = list(card.card for card in CardOfDeck.objects.filter(deck__game_id=game_id))
 
     return all_card
 
@@ -118,7 +118,6 @@ def add_player(request: WSGIRequest, game_id: int = 0, username: str = ''):
                     status: int = 200
 
                 try:
-                    # sleep(2)
                     players_in_game: django.db.models.QuerySet[Player] = Player.objects.filter(game_id=game_id)
                     players_in_game_count: int = players_in_game.count()
                     if players_in_game_count >= Game.objects.get(id=game_id).maxPlayers:
@@ -130,9 +129,9 @@ def add_player(request: WSGIRequest, game_id: int = 0, username: str = ''):
                             for i in range(cards_per_player):
                                 CardOfPlayer.objects.create(
                                     player=player,
-                                    card=all_card.pop()
+                                    card=all_card.pop(0)
                                 )
-                except IndexError:
+                except:
                     pass
         except:
             status: int = 500

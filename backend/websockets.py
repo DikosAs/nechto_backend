@@ -14,7 +14,7 @@ def get_cards_of_player(username: str) -> list[Card]:
 @database_sync_to_async
 def get_players(game_id: int) -> dict[int, str]:
     players: dict = {}
-    for player in Player.objects.filter(gameID_id=game_id):
+    for player in Player.objects.filter(game_id=game_id):
         players[player.position] = player.username
     return players
 

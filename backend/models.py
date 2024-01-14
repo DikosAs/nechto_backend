@@ -29,6 +29,7 @@ class Player(models.Model):
 
 class Card(models.Model):
     CARD_TYPES = [
+        ("PAS", "Пассивная"),
         ("ACT", "Активная"),
         ("DEF", "Защитная"),
         ("PAN", "Паника"),
