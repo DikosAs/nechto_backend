@@ -120,7 +120,8 @@ def add_player(request: WSGIRequest, game_id: int = 0, username: str = ''):
                 try:
                     players_in_game: django.db.models.QuerySet[Player] = Player.objects.filter(game_id=game_id)
                     players_in_game_count: int = players_in_game.count()
-                    if players_in_game_count >= Game.objects.get(id=game_id).maxPlayers:
+                    if (players_in_game_count >= Game.objects.get(id=game_id).maxPlayers
+                            and not Deck.objects.filter(game_id=game_id).exists()):
                         all_card: list[Card] = generate_deck(game_id)
 
                         cards_per_player = 4

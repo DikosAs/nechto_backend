@@ -1,14 +1,20 @@
 import django.db.models
 from channels.generic.websocket import AsyncWebsocketConsumer
 from channels.db import database_sync_to_async
-from backend.models import CardOfPlayer, Player
-from backend.views import *
+from backend.models import CardOfPlayer, Player, Card
 import json
 
 
 @database_sync_to_async
-def get_cards_of_player(username: str) -> list[Card]:
-    return [card.card for card in CardOfPlayer.objects.filter(player__username=username)]
+def get_cards_of_players(game_id: int) -> dict[Player.username, list[Card.id]]:
+    cards = {}
+    for player in Player.objects.filter(game_id=game_id):
+        cards_: list[Card.id] = []
+        for cardOfPlayer in CardOfPlayer.objects.filter(player=player):
+            cards_.append(cardOfPlayer.card.id)
+        else:
+            cards[player.username] = cards_
+    return cards
 
 
 @database_sync_to_async
@@ -31,16 +37,21 @@ class GameWSClient(AsyncWebsocketConsumer):
 
         self.game_id = self.scope['url_route']['kwargs']['game_id']
         self.username = self.scope['url_route']['kwargs']['username']
+        self.room_group_id = f'game_{self.game_id}'
 
         self.channel_layer.group_add(
-            self.game_id,
+            self.room_group_id,
             self.channel_name
         )
 
-        await self.send_data(base_data=True)
+        await self.send_data()
 
     async def disconnect(self, close_code):
-        await self.send_data(base_data=True)
+        await self.channel_layer.group_discard(
+            self.room_group_id,
+            self.channel_name
+        )
+        await self.send_data()
 
     async def receive(self, text_data=None, bytes_data=None):
         try:
@@ -50,32 +61,24 @@ class GameWSClient(AsyncWebsocketConsumer):
         if isinstance(data, dict):
             if data['func'] == 'step':
                 card = await get_card_data_for_card_id(data['cardID'])
-                if "flamethrower" in card.function:
-                    await self.send_data(base_data=True)
-                else:
-                    await self.send_data(base_data=False)
 
     async def send_data(
             self,
-            data: dict = None,
-            base_data: bool = False
+            data: dict = None
     ):
-        if base_data:
-            cards = await get_cards_of_player(self.username)
+        if data is None:
+            cards = await get_cards_of_players(self.game_id)
             players = await get_players(self.game_id)
             data = {
                 'func': 'data',
                 'cards': cards,
                 'players': players
             }
-        self.channel_layer.group_send(
-            self.game_id,
+
+        await self.channel_layer.group_send(
+            self.room_group_id,
             data
         )
 
-    async def chat_message(self, event):
-        await self.send(
-            text_data=json.dumps(
-                event['message']
-            )
-        )
+    async def send_updates(self, event):
+        await self.send(json.dumps(event))
