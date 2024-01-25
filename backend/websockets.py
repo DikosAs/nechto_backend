@@ -1,5 +1,4 @@
-import django.db.models
-from channels.generic.websocket import AsyncWebsocketConsumer
+from channels.generic.websocket import AsyncJsonWebsocketConsumer
 from channels.db import database_sync_to_async
 from backend.models import CardOfPlayer, Player, Card
 import json
@@ -31,20 +30,22 @@ def get_card_data_for_card_id(card_id: int) -> Card:
 
 
 # Django WebSocket for game client
-class GameWSClient(AsyncWebsocketConsumer):
+class GameWSClient(AsyncJsonWebsocketConsumer):
     async def connect(self):
-        await self.accept()
+        try:
+            self.game_id = self.scope['url_route']['kwargs']['game_id']
+            self.username = str(self.scope['url_route']['kwargs']['username'])
+            self.room_group_id = f'game_{self.game_id}'
 
-        self.game_id = self.scope['url_route']['kwargs']['game_id']
-        self.username = self.scope['url_route']['kwargs']['username']
-        self.room_group_id = f'game_{self.game_id}'
+            await self.channel_layer.group_add(
+                self.room_group_id,
+                self.channel_name
+            )
 
-        self.channel_layer.group_add(
-            self.room_group_id,
-            self.channel_name
-        )
-
-        await self.send_data()
+            await self.accept()
+            await self.send_data()
+        except Exception as e:
+            await self.close()
 
     async def disconnect(self, close_code):
         await self.channel_layer.group_discard(
@@ -53,32 +54,25 @@ class GameWSClient(AsyncWebsocketConsumer):
         )
         await self.send_data()
 
-    async def receive(self, text_data=None, bytes_data=None):
-        try:
-            data: dict = json.loads(text_data)
-        except json.decoder.JSONDecodeError:
-            data: str = text_data
-        if isinstance(data, dict):
-            if data['func'] == 'step':
-                card = await get_card_data_for_card_id(data['cardID'])
+    async def receive_json(self, content, **kwargs):
+        print(content)
+        await self.send_data()
 
-    async def send_data(
-            self,
-            data: dict = None
-    ):
-        if data is None:
+    async def send_data(self, content: dict = None):
+        if content is None:
             cards = await get_cards_of_players(self.game_id)
             players = await get_players(self.game_id)
-            data = {
+            content = {
                 'func': 'data',
                 'cards': cards,
                 'players': players
             }
-
+        content = {
+            'type': 'send',
+            'data': content
+        }
+        print(content)
         await self.channel_layer.group_send(
             self.room_group_id,
-            data
+            content
         )
-
-    async def send_updates(self, event):
-        await self.send(json.dumps(event))
